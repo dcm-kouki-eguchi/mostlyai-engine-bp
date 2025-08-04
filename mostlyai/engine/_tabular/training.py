@@ -14,6 +14,7 @@
 
 import logging
 import math
+import os
 import time
 import warnings
 from collections.abc import Callable
@@ -23,6 +24,7 @@ from pathlib import Path
 
 import numpy as np
 import pandas as pd
+import psutil
 import torch
 from datasets import disable_progress_bar, load_dataset
 from opacus import GradSampleModule, PrivacyEngine
@@ -124,6 +126,23 @@ def _physical_batch_size_heuristic(
 def _learn_rate_heuristic(batch_size: int) -> float:
     learn_rate = np.round(0.001 * np.sqrt(batch_size / 32), 5)
     return learn_rate
+
+
+def get_optimal_num_workers() -> int:
+    """CPUコア数に応じて最適なワーカー数を自動決定"""
+    cpu_cores = os.cpu_count()  # 論理コア数
+    try:
+        physical_cores = psutil.cpu_count(logical=False)  # 物理コア数
+    except Exception:
+        physical_cores = cpu_cores // 2  # フォールバック
+    
+    # 物理コア数の50-75%程度が最適、最大4に制限
+    optimal_workers = min(4, max(1, physical_cores // 2))
+    
+    _LOG.info(f"CPU cores: {cpu_cores} logical, {physical_cores} physical")
+    _LOG.info(f"Optimal num_workers: {optimal_workers}")
+    
+    return optimal_workers
 
 
 ####################
@@ -549,6 +568,11 @@ def train(
             # either DP logical batch size or grad accumulation physical batch size
             batch_size=trn_batch_size if with_dp else batch_size,
             collate_fn=batch_collator,
+            # 追加パラメータ
+            num_workers=get_optimal_num_workers(),
+            pin_memory=torch.cuda.is_available(),
+            prefetch_factor=2,
+            persistent_workers=True,
         )
         val_dataset = load_dataset("parquet", data_files=[str(p) for p in workspace.encoded_data_val.fetch_all()])[
             "train"
@@ -558,6 +582,11 @@ def train(
             shuffle=False,
             batch_size=val_batch_size,
             collate_fn=batch_collator,
+            # 追加パラメータ
+            num_workers=get_optimal_num_workers(),
+            pin_memory=torch.cuda.is_available(),
+            prefetch_factor=2,
+            persistent_workers=True,
         )
 
         _LOG.info(f"{trn_cnt=}, {val_cnt=}")
