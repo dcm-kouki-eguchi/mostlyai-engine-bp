@@ -135,9 +135,9 @@ def get_optimal_num_workers() -> int:
         physical_cores = psutil.cpu_count(logical=False)  # 物理コア数
     except Exception:
         physical_cores = cpu_cores // 2  # フォールバック
-    
-    # 物理コア数の50-75%程度が最適、最大4に制限
-    optimal_workers = min(4, max(1, physical_cores // 2))
+
+    # 物理コア数の50-75%程度が最適、最大32に制限
+    optimal_workers = min(32, max(1, physical_cores // 2))
     
     _LOG.info(f"CPU cores: {cpu_cores} logical, {physical_cores} physical")
     _LOG.info(f"Optimal num_workers: {optimal_workers}")
