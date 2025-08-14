@@ -566,7 +566,7 @@ def train(
         
         # 固定値でテスト
         use_pin_memory = False  # spawn方式ではpin_memoryを無効化
-        num_workers = 4         # ワーカー数を設定
+        num_workers = 1         # ワーカー数を設定
         
         if torch.cuda.is_available() and num_workers > 0:
             try:
