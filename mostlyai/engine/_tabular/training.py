@@ -559,6 +559,17 @@ def train(
             is_sequential=is_sequential, max_sequence_window=max_sequence_window, device=device
         )
         disable_progress_bar()
+        
+        # CUDAマルチプロセシング対応: spawn方式を強制
+        import torch.multiprocessing as mp
+        spawn_context = None
+        if torch.cuda.is_available() and get_optimal_num_workers() > 0:
+            try:
+                spawn_context = mp.get_context('spawn')
+                _LOG.info("Using spawn multiprocessing context for CUDA compatibility")
+            except RuntimeError as e:
+                _LOG.warning(f"Failed to get spawn context: {e}, falling back to default")
+        
         trn_dataset = load_dataset("parquet", data_files=[str(p) for p in workspace.encoded_data_trn.fetch_all()])[
             "train"
         ]
@@ -573,6 +584,7 @@ def train(
             pin_memory=torch.cuda.is_available(),
             prefetch_factor=2,
             persistent_workers=True,
+            multiprocessing_context=spawn_context,  # spawn方式を明示的に指定
         )
         val_dataset = load_dataset("parquet", data_files=[str(p) for p in workspace.encoded_data_val.fetch_all()])[
             "train"
@@ -587,6 +599,7 @@ def train(
             pin_memory=torch.cuda.is_available(),
             prefetch_factor=2,
             persistent_workers=True,
+            multiprocessing_context=spawn_context,  # spawn方式を明示的に指定
         )
 
         _LOG.info(f"{trn_cnt=}, {val_cnt=}")
