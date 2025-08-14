@@ -560,22 +560,21 @@ def train(
         )
         disable_progress_bar()
         
-        # CUDAマルチプロセシング対応: spawn方式を強制
+        # CUDAマルチプロセシング対応: シンプルなテスト設定
         import torch.multiprocessing as mp
         spawn_context = None
-        use_pin_memory = torch.cuda.is_available()  # デフォルトはCUDA利用可能性に依存
         
-        if torch.cuda.is_available() and get_optimal_num_workers() > 0:
+        # 固定値でテスト
+        use_pin_memory = True  # ピンメモリを有効化
+        num_workers = 4        # ワーカー数を設定
+        
+        if torch.cuda.is_available() and num_workers > 0:
             try:
                 spawn_context = mp.get_context('spawn')
                 _LOG.info("Using spawn multiprocessing context for CUDA compatibility")
-                # spawn方式ではpin_memoryを無効化（CUDAテンソル共有の問題を回避）
-                use_pin_memory = False
-                _LOG.info("Disabled pin_memory for spawn multiprocessing compatibility")
             except RuntimeError as e:
-                _LOG.warning(f"Failed to get spawn context: {e}, falling back to default")
-                # フォールバック時はpin_memoryを有効のまま
-                use_pin_memory = torch.cuda.is_available()
+                _LOG.warning(f"Failed to get spawn context: {e}")
+                spawn_context = None
         
         trn_dataset = load_dataset("parquet", data_files=[str(p) for p in workspace.encoded_data_trn.fetch_all()])[
             "train"
@@ -587,7 +586,7 @@ def train(
             batch_size=trn_batch_size if with_dp else batch_size,
             collate_fn=batch_collator,
             # 追加パラメータ
-            num_workers=get_optimal_num_workers(),
+            num_workers=num_workers,
             pin_memory=use_pin_memory,  # 条件分岐でpin_memoryを制御
             prefetch_factor=2,
             persistent_workers=True,
@@ -602,7 +601,7 @@ def train(
             batch_size=val_batch_size,
             collate_fn=batch_collator,
             # 追加パラメータ
-            num_workers=get_optimal_num_workers(),
+            num_workers=num_workers,
             pin_memory=use_pin_memory,  # 条件分岐でpin_memoryを制御
             prefetch_factor=2,
             persistent_workers=True,
