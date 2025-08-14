@@ -563,12 +563,19 @@ def train(
         # CUDAマルチプロセシング対応: spawn方式を強制
         import torch.multiprocessing as mp
         spawn_context = None
+        use_pin_memory = torch.cuda.is_available()  # デフォルトはCUDA利用可能性に依存
+        
         if torch.cuda.is_available() and get_optimal_num_workers() > 0:
             try:
                 spawn_context = mp.get_context('spawn')
                 _LOG.info("Using spawn multiprocessing context for CUDA compatibility")
+                # spawn方式ではpin_memoryを無効化（CUDAテンソル共有の問題を回避）
+                use_pin_memory = False
+                _LOG.info("Disabled pin_memory for spawn multiprocessing compatibility")
             except RuntimeError as e:
                 _LOG.warning(f"Failed to get spawn context: {e}, falling back to default")
+                # フォールバック時はpin_memoryを有効のまま
+                use_pin_memory = torch.cuda.is_available()
         
         trn_dataset = load_dataset("parquet", data_files=[str(p) for p in workspace.encoded_data_trn.fetch_all()])[
             "train"
@@ -581,7 +588,7 @@ def train(
             collate_fn=batch_collator,
             # 追加パラメータ
             num_workers=get_optimal_num_workers(),
-            pin_memory=torch.cuda.is_available(),
+            pin_memory=use_pin_memory,  # 条件分岐でpin_memoryを制御
             prefetch_factor=2,
             persistent_workers=True,
             multiprocessing_context=spawn_context,  # spawn方式を明示的に指定
@@ -596,7 +603,7 @@ def train(
             collate_fn=batch_collator,
             # 追加パラメータ
             num_workers=get_optimal_num_workers(),
-            pin_memory=torch.cuda.is_available(),
+            pin_memory=use_pin_memory,  # 条件分岐でpin_memoryを制御
             prefetch_factor=2,
             persistent_workers=True,
             multiprocessing_context=spawn_context,  # spawn方式を明示的に指定
